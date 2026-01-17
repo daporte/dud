@@ -2,9 +2,14 @@ package index
 
 import (
 	"os/exec"
+	"os"
+	"path/filepath"
+	
+	"github.com/kevin-hanselman/dud/src/checksum"
 
 	"github.com/kevin-hanselman/dud/src/agglog"
 	"github.com/kevin-hanselman/dud/src/cache"
+	"github.com/kevin-hanselman/dud/src/strategy"
 	"github.com/pkg/errors"
 )
 
@@ -63,28 +68,27 @@ func (idx Index) Run(
 		runReason = "definition modified"
 	}
 
-	// Always check all upstream stages.
-	for artPath, art := range stg.Inputs {
-		ownerPath, _ := idx.findOwner(artPath)
-		if ownerPath == "" {
-			artStatus, err := ch.Status(rootDir, *art, true)
-			if err != nil {
-				return err
+	// --- Dud Stage Run Caching ---
+	// Before running, check cache for this stage+inputs+command
+	stageKey := CalcStageKey(stg.Inputs, stg.Command, stg.WorkingDir)
+	table, _ := LoadIoHashTable(rootDir)
+	if outSet, ok := table[stageKey]; ok {
+		logger.Info.Printf("cache hit: restoring outputs for stage %s from local cache\n", stagePath)
+		for path, checksum := range outSet {
+			art, exists := stg.Outputs[path]
+			if !exists {
+				logger.Error.Printf("output %s not found in stage definition", path)
+				continue
 			}
-			if !artStatus.ContentsMatch {
-				doRun = true
-				runReason = "input out-of-date"
-			}
-		} else if recursive {
-			if err := idx.Run(ownerPath, ch, rootDir, recursive, ran, inProgress, logger); err != nil {
-				return err
-			}
-			if ran[ownerPath] {
-				doRun = true
-				runReason = "upstream stage out-of-date"
+			art.Checksum = checksum
+			if err := ch.Checkout(rootDir, *art, strategy.LinkStrategy, nil); err != nil {
+				logger.Error.Printf("failed to check out %s from cache: %v", art.Path, err)
 			}
 		}
+		return nil
 	}
+	// --- End Dud Stage Run Caching ---
+
 
 	if !doRun {
 		for _, art := range stg.Outputs {
@@ -109,33 +113,40 @@ func (idx Index) Run(
 			if err := runCommand(cmd); err != nil {
 				return err
 			}
-			// ---- FEATURE: Add hash table entry ----
-			// After running the command, save the input/output checksum mapping.
-			var inputSums, outputSums []string
+			logger.Info.Printf("after runCommand")
+
+			strat := strategy.LinkStrategy
+			committed := make(map[string]bool)
+			inProgressCommit := make(map[string]bool)
+			if err := idx.Commit(stagePath, ch, rootDir, strat, committed, inProgressCommit, logger); err != nil {
+				return err
+			}
 			for _, art := range stg.Inputs {
-				if art.Checksum != "" {
-					inputSums = append(inputSums, art.Checksum)
-				}
-			}
-			for _, art := range stg.Outputs {
-				if art.Checksum != "" {
-					outputSums = append(outputSums, art.Checksum)
-				}
-			}
-			if len(inputSums) > 0 && len(outputSums) > 0 {
-				inputsHash := ComputeHashFromChecksums(inputSums)
-				outputsHash := ComputeHashFromChecksums(outputSums)
-				table, err := LoadIoHashTable(rootDir)
-				if err != nil {
-					logger.Error.Printf("io-hash-table load failed: %v", err)
-				} else {
-					logger.Info.Printf("saving stage I/O hash: %s -> %s\n", inputsHash, outputsHash)
-					if err := SaveIoHashTable(table, rootDir); err != nil {
-						logger.Error.Printf("io-hash-table save failed: %v", err)
+				if art.Checksum == "" {
+					f, err := os.Open(filepath.Join(rootDir, art.Path))
+					if err == nil {
+						sum, err := checksum.Checksum(f)
+						if err == nil {
+							art.Checksum = sum
+						}
+						f.Close()
 					}
 				}
 			}
-			// ---- END FEATURE ----
+
+			// After outputs are committed, save output set to cache table
+			outputSet := OutputSet{}
+			for path, art := range stg.Outputs {
+				outputSet[path] = art.Checksum
+			}
+			table[stageKey] = outputSet
+			if err := SaveIoHashTable(table, rootDir); err != nil {
+				logger.Error.Printf("failed to update io-hash-table: %v", err)
+			} else {
+				logger.Info.Printf("saved new cache state for this stage/configuration\n")
+			}
+
+
 		} else {
 			logger.Info.Printf("nothing to do for stage %s (%s, but no command)\n", stagePath, runReason)
 		}

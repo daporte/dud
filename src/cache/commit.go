@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"fmt"
 
 	"github.com/cheggaaa/pb/v3"
 	"github.com/kevin-hanselman/dud/src/agglog"
@@ -109,9 +110,35 @@ func commitFileArtifact(
 	if status.ContentsMatch {
 		return nil
 	}
-	if status.WorkspaceFileStatus != fsutil.StatusRegularFile {
-		return errors.Errorf("%s: expected regular file, got %s", workPath, status.WorkspaceFileStatus)
+	// Accept regular file OR an up-to-date link (points to the right cache target)
+
+	if status.WorkspaceFileStatus == fsutil.StatusLink && !status.ContentsMatch {
+		// Try to follow the symlink and compute the checksum from the target file
+		fmt.Printf("link points to: %s, expected checksum: %s, status.ContentsMatch: %v\n", workPath, art.Checksum, status.ContentsMatch)
+		targetPath, err := os.Readlink(workPath)
+		if err != nil {
+			return errors.Wrapf(err, "%s: could not read symlink for commit", workPath)
+		}
+		// If targetPath is not absolute, resolve relative to workPath's dir
+		if !filepath.IsAbs(targetPath) {
+			targetPath = filepath.Join(filepath.Dir(workPath), targetPath)
+		}
+		f, err := os.Open(targetPath)
+		if err != nil {
+			return errors.Wrapf(err, "%s: could not open symlink target for checksum", targetPath)
+		}
+		defer f.Close()
+		cksum, err := checksum.Checksum(f)
+		if err != nil {
+			return errors.Wrapf(err, "%s: could not checksum link target", targetPath)
+		}
+		art.Checksum = cksum
+		// Optionally: also update status.ContentsMatch, etc.
+		return nil // treat as success
 	}
+
+
+
 	fileInfo, err := os.Stat(workPath)
 	if err != nil {
 		return err
