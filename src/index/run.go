@@ -102,12 +102,40 @@ func (idx Index) Run(
 	if doRun {
 		if hasCommand {
 			logger.Info.Printf("running stage %s (%s)\n", stagePath, runReason)
+			logger.Info.Printf("trying to cache")
 			cmd := stg.CreateCommand()
 			// Avoid cmd.Command here because it will include "sh -c ...".
 			logger.Debug.Printf("(in %s) %s\n", cmd.Dir, stg.Command)
 			if err := runCommand(cmd); err != nil {
 				return err
 			}
+			// ---- FEATURE: Add hash table entry ----
+			// After running the command, save the input/output checksum mapping.
+			var inputSums, outputSums []string
+			for _, art := range stg.Inputs {
+				if art.Checksum != "" {
+					inputSums = append(inputSums, art.Checksum)
+				}
+			}
+			for _, art := range stg.Outputs {
+				if art.Checksum != "" {
+					outputSums = append(outputSums, art.Checksum)
+				}
+			}
+			if len(inputSums) > 0 && len(outputSums) > 0 {
+				inputsHash := ComputeHashFromChecksums(inputSums)
+				outputsHash := ComputeHashFromChecksums(outputSums)
+				table, err := LoadIoHashTable(rootDir)
+				if err != nil {
+					logger.Error.Printf("io-hash-table load failed: %v", err)
+				} else {
+					logger.Info.Printf("saving stage I/O hash: %s -> %s\n", inputsHash, outputsHash)
+					if err := SaveIoHashTable(table, rootDir); err != nil {
+						logger.Error.Printf("io-hash-table save failed: %v", err)
+					}
+				}
+			}
+			// ---- END FEATURE ----
 		} else {
 			logger.Info.Printf("nothing to do for stage %s (%s, but no command)\n", stagePath, runReason)
 		}

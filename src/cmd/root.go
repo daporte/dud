@@ -80,8 +80,11 @@ building data pipelines.`,
 		DisableAutoGenTag: true,
 	}
 
-	// This is the Logger for the entire application.
-	logger *agglog.AggLogger
+	logger = &agglog.AggLogger{
+		Error: log.New(os.Stderr, "Error: ", 0),
+		Info:  log.New(os.Stdout, "", 0),
+		Debug: log.New(io.Discard, "", 0),
+	}
 
 	doProfile, doTrace, verbose, projectLocked bool
 	debugOutput                                *os.File
@@ -130,11 +133,8 @@ func init() {
 
 // Main is the entry point to the cobra CLI.
 func Main() {
-	logger = &agglog.AggLogger{
-		Error: log.New(os.Stderr, "Error: ", 0),
-		Info:  log.New(os.Stdout, "", 0),
-		Debug: log.New(io.Discard, "", 0),
-	}
+	logger.Info.Println("[dud-fork] Running custom forked Dud CLI!")
+
 	if err := rootCmd.Execute(); err != nil {
 		fatal(err)
 	}
