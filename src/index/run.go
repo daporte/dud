@@ -89,6 +89,29 @@ func (idx Index) Run(
 		doRun = true
 		runReason = "definition modified"
 	}
+	// Always check all upstream stages.
+	for artPath, art := range stg.Inputs {
+		ownerPath, _ := idx.findOwner(artPath)
+		if ownerPath == "" {
+			artStatus, err := ch.Status(rootDir, *art, true)
+			if err != nil {
+				return err
+			}
+			if !artStatus.ContentsMatch {
+				doRun = true
+				runReason = "input out-of-date"
+			}
+		} else if recursive {
+			if err := idx.Run(ownerPath, ch, rootDir, recursive, ran, inProgress, logger); err != nil {
+				return err
+			}
+			if ran[ownerPath] {
+				doRun = true
+				runReason = "upstream stage out-of-date"
+			}
+		}
+	}
+		
 
 	// --- Dud Stage Run Caching ---
 	// Before running, check cache for this stage+inputs+command
