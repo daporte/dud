@@ -33,7 +33,9 @@ func (idx Index) Run(
 		return nil
 	}
 
+    fmt.Printf("Running stage: %s\n", stagePath)
 	if inProgress[stagePath] {
+		fmt.Printf("cycle detected at stage %s\n", stagePath)
 		return errors.New("cycle detected")
 	}
 	inProgress[stagePath] = true
@@ -117,8 +119,10 @@ func (idx Index) Run(
 	// Before running, check cache for this stage+inputs+command
 	stageKey := CalcStageKey(stg.Inputs, stg.Command, stg.WorkingDir)
 	table, _ := LoadIoHashTable(rootDir)
+
 	if outSet, ok := table[stageKey]; ok {
 		logger.Info.Printf("cache hit: restoring outputs for stage %s from local cache\n", stagePath)
+
 		for path, checksum := range outSet {
 			art, exists := stg.Outputs[path]
 			if !exists {
@@ -128,10 +132,16 @@ func (idx Index) Run(
 			art.Checksum = checksum
 			if err := ch.Checkout(rootDir, *art, strategy.LinkStrategy, nil); err != nil {
 				logger.Error.Printf("failed to check out %s from cache: %v", art.Path, err)
+				return err
 			}
 		}
+
+		ran[stagePath] = true
+		delete(inProgress, stagePath)
 		return nil
 	}
+
+
 	// --- End Dud Stage Run Caching ---
 
 
