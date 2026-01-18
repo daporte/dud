@@ -4,6 +4,7 @@ import (
 	"os/exec"
 	"os"
 	"path/filepath"
+	"fmt"
 	
 	"github.com/kevin-hanselman/dud/src/checksum"
 
@@ -40,6 +41,27 @@ func (idx Index) Run(
 	stg, ok := idx[stagePath]
 	if !ok {
 		return unknownStageError{stagePath}
+	}
+
+	// At the end of your run function:
+	depFile, err := os.Create(filepath.Join(rootDir, ".dud", "stage_deps.txt"))
+	if err != nil {
+		logger.Error.Printf("failed to create dep file: %v\n", err)
+	} else {
+		for stagePath, stg := range idx {
+			var deps []string
+			for inp := range stg.Inputs {
+				if owner, _ := idx.findOwner(inp); owner != "" {
+					deps = append(deps, owner)
+				}
+			}
+			fmt.Fprintf(depFile, "%s:", stagePath)
+			for _, dep := range deps {
+				fmt.Fprintf(depFile, " %s", dep)
+			}
+			fmt.Fprintln(depFile)
+		}
+		depFile.Close()
 	}
 
 	hasCommand := stg.Command != ""
