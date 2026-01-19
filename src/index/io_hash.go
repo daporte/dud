@@ -44,7 +44,7 @@ func getRunCacheDir(rootDir string) string {
 			runCacheDir = filepath.Join(home, runCacheDir[2:])
 		}
 	}
-	return filepath.Join(rootDir, runCacheDir)
+	return filepath.Join(runCacheDir)
 }
 
 func LoadIoHashTable(rootDir string) (IoHashTable, error) {
