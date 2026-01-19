@@ -319,6 +319,7 @@ func prepare(paths []string) (rootDir string, ch cache.LocalCache, idx index.Ind
 		return
 	}
 
+	// Use the cache directory from config.yaml or default if not set
 	ch, err = cache.NewLocalCache(viper.GetString("cache"))
 	if err != nil {
 		return
@@ -327,3 +328,4 @@ func prepare(paths []string) (rootDir string, ch cache.LocalCache, idx index.Ind
 	idx, err = index.FromFile(indexPath)
 	return
 }
+

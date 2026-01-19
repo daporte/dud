@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sort"
 
 	"github.com/kevin-hanselman/dud/src/artifact"
+	"github.com/spf13/viper"
 )
 
 
@@ -31,9 +33,25 @@ func CalcStageKey(inputs map[string]*artifact.Artifact, command, workdir string)
 	h.Write([]byte(workdir))
 	return hex.EncodeToString(h.Sum(nil))
 }
+func getRunCacheDir(rootDir string) string {
+	runCacheDir := viper.GetString("run_cache")
+	if runCacheDir == "" {
+		runCacheDir = ".dud/io-cache"
+	}
+	if strings.HasPrefix(runCacheDir, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			runCacheDir = filepath.Join(home, runCacheDir[2:])
+		}
+	}
+	return filepath.Join(rootDir, runCacheDir)
+}
 
 func LoadIoHashTable(rootDir string) (IoHashTable, error) {
-	tablePath := filepath.Join(rootDir, IoHashTablePath)
+	runCacheDir := getRunCacheDir(rootDir)
+	os.MkdirAll(runCacheDir, 0o755)
+	tablePath := filepath.Join(runCacheDir, "io-hash-table")
+	// fmt.Printf("[DEBUG] loading hash table from: %s\n", tablePath)
 	f, err := os.Open(tablePath)
 	if os.IsNotExist(err) {
 		return make(IoHashTable), nil
@@ -50,7 +68,9 @@ func LoadIoHashTable(rootDir string) (IoHashTable, error) {
 }
 
 func SaveIoHashTable(table IoHashTable, rootDir string) error {
-	tablePath := filepath.Join(rootDir, ".dud", "io-hash-table")
+	runCacheDir := getRunCacheDir(rootDir)
+	os.MkdirAll(runCacheDir, 0o755)
+	tablePath := filepath.Join(runCacheDir, "io-hash-table")
 	fmt.Printf("[DEBUG] Saving I/O hash table to: %s\n", tablePath)
 	f, err := os.Create(tablePath)
 	if err != nil {
@@ -62,13 +82,14 @@ func SaveIoHashTable(table IoHashTable, rootDir string) error {
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(table); err != nil {
 		fmt.Printf("[DEBUG] Error encoding io-hash-table: %v\n", err)
+		return err
 	}
-	return enc.Encode(table)
+	return nil
 }
 
 
 // IoHashTablePath is the default location for the IO hash table
-const IoHashTablePath = ".dud/io-hash-table"
+// const IoHashTablePath = ".dud/io-hash-table"
 
 
 // ComputeHashFromChecksums returns the SHA256 hash for a sorted slice of checksums.
