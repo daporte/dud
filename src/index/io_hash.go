@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/kevin-hanselman/dud/src/artifact"
+	"github.com/kevin-hanselman/dud/src/checksum"
 	"github.com/spf13/viper"
 )
 
@@ -19,10 +20,26 @@ type OutputSet map[string]string // output_path -> checksum
 
 type IoHashTable map[string]OutputSet
 
-func CalcStageKey(inputs map[string]*artifact.Artifact, command, workdir string) string {
+
+func CalcStageKey(inputs map[string]*artifact.Artifact, command, workdir string, rootDir string) string {
 	var sums []string
 	for _, art := range inputs {
-		sums = append(sums, art.Checksum)
+		sum := art.Checksum
+		if sum == "" && art.Path != "" {
+			// Compute checksum from the file's contents if not already set
+			filePath := art.Path
+			if !strings.HasPrefix(filePath, "/") {
+				filePath = filepath.Join(rootDir, filePath)
+			}
+			if f, err := os.Open(filePath); err == nil {
+				if got, err := checksum.Checksum(f); err == nil {
+					sum = got
+				}
+				f.Close()
+			}
+		}
+		fmt.Printf("[DEBUG] input artifact path: %s, checksum: %s\n", art.Path, sum)
+		sums = append(sums, sum)
 	}
 	sort.Strings(sums)
 	h := sha256.New()

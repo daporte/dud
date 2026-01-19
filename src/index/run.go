@@ -117,7 +117,9 @@ func (idx Index) Run(
 
 	// --- Dud Stage Run Caching ---
 	// Before running, check cache for this stage+inputs+command
-	stageKey := CalcStageKey(stg.Inputs, stg.Command, stg.WorkingDir)
+	stageKey := CalcStageKey(stg.Inputs, stg.Command, stg.WorkingDir, rootDir)
+    fmt.Printf("Calculated stage key: %s\n", stageKey)
+
 	table, _ := LoadIoHashTable(rootDir)
 
 	if outSet, ok := table[stageKey]; ok {
