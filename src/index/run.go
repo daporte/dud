@@ -168,7 +168,9 @@ func (idx Index) Run(
 			// Avoid cmd.Command here because it will include "sh -c ...".
 			logger.Debug.Printf("(in %s) %s\n", cmd.Dir, stg.Command)
 			if err := runCommand(cmd); err != nil {
-				return err
+				fmt.Printf("command: %s\n", stg.Command)
+				fmt.Printf("command failed: %v\n", err)
+				os.Exit(1)
 			}
 			logger.Info.Printf("after runCommand")
 
