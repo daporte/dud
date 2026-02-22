@@ -25,6 +25,7 @@ func (idx Index) Run(
 	ch cache.Cache,
 	rootDir string,
 	recursive bool,
+	force bool,
 	ran map[string]bool,
 	inProgress map[string]bool,
 	logger *agglog.AggLogger,
@@ -104,7 +105,7 @@ func (idx Index) Run(
 				runReason = "input out-of-date"
 			}
 		} else if recursive {
-			if err := idx.Run(ownerPath, ch, rootDir, recursive, ran, inProgress, logger); err != nil {
+			if err := idx.Run(ownerPath, ch, rootDir, recursive, force, ran, inProgress, logger); err != nil {
 				return err
 			}
 			if ran[ownerPath] {
@@ -118,11 +119,12 @@ func (idx Index) Run(
 	// --- Dud Stage Run Caching ---
 	// Before running, check cache for this stage+inputs+command
 	stageKey := CalcStageKey(stg.Inputs, stg.Command, stg.WorkingDir, rootDir)
-    fmt.Printf("Calculated stage key: %s\n", stageKey)
+	fmt.Printf("Calculated stage key: %s\n", stageKey)
 
 	table, _ := LoadIoHashTable(rootDir)
 
-	if outSet, ok := table[stageKey]; ok {
+	if !force {
+		if outSet, ok := table[stageKey]; ok {
 		logger.Info.Printf("cache hit: restoring outputs for stage %s from local cache\n", stagePath)
 
 		for path, checksum := range outSet {
@@ -138,9 +140,12 @@ func (idx Index) Run(
 			}
 		}
 
-		ran[stagePath] = true
-		delete(inProgress, stagePath)
-		return nil
+			ran[stagePath] = true
+			delete(inProgress, stagePath)
+			return nil
+		}
+	} else {
+		logger.Info.Printf("force flag set: skipping cache for stage %s\n", stagePath)
 	}
 
 
@@ -170,9 +175,10 @@ func (idx Index) Run(
 			if err := runCommand(cmd); err != nil {
 				fmt.Printf("command: %s\n", stg.Command)
 				fmt.Printf("command failed: %v\n", err)
-				os.Exit(1)
+				return err
+			} else {
+				logger.Info.Printf("after runCommand")
 			}
-			logger.Info.Printf("after runCommand")
 
 			strat := strategy.LinkStrategy
 			committed := make(map[string]bool)

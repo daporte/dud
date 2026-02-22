@@ -13,9 +13,17 @@ func init() {
 		false,
 		"disable recursive operation on upstream stages",
 	)
+	runCmd.Flags().BoolVarP(
+		&runForce,
+		"force",
+		"f",
+		false,
+		"bypass the cache and force re-execution",
+	)
 }
 
 var runSingleStage bool
+var runForce bool
 
 var runCmd = &cobra.Command{
 	Use:   "run [flags] [stage_file]...",
@@ -46,7 +54,7 @@ out-of-date.`,
 		ran := make(map[string]bool)
 		for _, path := range paths {
 			inProgress := make(map[string]bool)
-			err := idx.Run(path, ch, rootDir, !runSingleStage, ran, inProgress, logger)
+			err := idx.Run(path, ch, rootDir, !runSingleStage, runForce, ran, inProgress, logger)
 			if err != nil {
 				fatal(err)
 			}
